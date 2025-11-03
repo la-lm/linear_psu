@@ -156,6 +156,8 @@ int main(void)
   int32_t encoder_value_i = 0;
 
 
+
+  //ADC configuration
   HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED); 
   HAL_ADCEx_Calibration_Start(&hadc2, ADC_SINGLE_ENDED); 
   float output_voltage = 0.0f;
@@ -210,7 +212,7 @@ int main(void)
     HAL_DAC_SetValue(&hdac2, DAC_CHANNEL_1, DAC_ALIGN_12B_R, dac_val_i);
 
 
-    if (Read_Dual_ADC_Channels(&hadc1, &hadc2, &feedback_voltage_V, &current_sense_voltage_V) == HAL_OK)
+    if (Read_Dual_ADC_Modules(&hadc1, &hadc2, &feedback_voltage_V, &current_sense_voltage_V) == HAL_OK)
     {
       output_voltage = feedback_voltage_V * VFB_DIV_RATIO;
       load_current_A = current_sense_voltage_V / (SHUNT_RESISTOR_mOhm * CURRENT_SENSE_AMP_GAIN);
@@ -849,52 +851,51 @@ void Button_Toggle_Task(void)
 
     last_button_state = current_button_state;
 } 
-
-HAL_StatusTypeDef Read_Dual_ADC_Channels(ADC_HandleTypeDef *hadc_handle, float *p_feedback_V, float *p_current_V)
+HAL_StatusTypeDef Read_Dual_ADC_Modules(ADC_HandleTypeDef *hadc_fb, ADC_HandleTypeDef *hadc_cs, 
+                                        float *p_feedback_V, float *p_current_V)
 {
-    // 1. ADC変換を開始し、完了を待つ (ポーリング)
-    // タイムアウトは適宜設定してください
-    if (HAL_ADC_Start(hadc_handle) != HAL_OK)
+    uint32_t raw_adc_fb;
+    uint32_t raw_adc_cs;
+
+    // ----------------------------------------------------------------
+    // 1. 帰還電圧 (hadc1) の読み取り
+    // ----------------------------------------------------------------
+    if (HAL_ADC_Start(hadc_fb) != HAL_OK) return HAL_ERROR;
+    if (HAL_ADC_PollForConversion(hadc_fb, 10) != HAL_OK)
     {
+        HAL_ADC_Stop(hadc_fb);
         return HAL_ERROR;
     }
+    raw_adc_fb = HAL_ADC_GetValue(hadc_fb);
+    HAL_ADC_Stop(hadc_fb);
 
-    // --- (1) 帰還電圧チャネル (Rank 1) の読み取り ---
-    
-    // 変換完了を待つ
-    if (HAL_ADC_PollForConversion(hadc_handle, 10) != HAL_OK)
+
+    // ----------------------------------------------------------------
+    // 2. 電流センス電圧 (hadc2) の読み取り
+    // ----------------------------------------------------------------
+    if (HAL_ADC_Start(hadc_cs) != HAL_OK) return HAL_ERROR;
+    if (HAL_ADC_PollForConversion(hadc_cs, 10) != HAL_OK)
     {
-        HAL_ADC_Stop(hadc_handle);
+        HAL_ADC_Stop(hadc_cs);
         return HAL_ERROR;
     }
-    // 値を取得
-    raw_adc_voltage = HAL_ADC_GetValue(hadc_handle);
-    
-    // --- (2) 電流センスチャネル (Rank 2) の読み取り ---
-    
-    // 変換完了を待つ（シングルエンド設定の場合、前回のStartで次のチャネルの変換が自動的に進行しています）
-    if (HAL_ADC_PollForConversion(hadc_handle, 10) != HAL_OK)
-    {
-        HAL_ADC_Stop(hadc_handle);
-        return HAL_ERROR;
-    }
-    // 値を取得
-    raw_adc_current = HAL_ADC_GetValue(hadc_handle);
-
-    // ADCを停止
-    HAL_ADC_Stop(hadc_handle);
+    raw_adc_cs = HAL_ADC_GetValue(hadc_cs);
+    HAL_ADC_Stop(hadc_cs);
 
 
+    // ----------------------------------------------------------------
     // 3. 電圧値への変換と格納
+    // ----------------------------------------------------------------
     
-    // 帰還電圧チャネルの変換
-    *p_feedback_V = ((float)raw_adc_voltage / (ADC_RESOLUTION)) * VOLTAGE_VREF;
+    // 帰還電圧 (hadc1) の変換
+    *p_feedback_V = ((float)raw_adc_fb / ADC_RESOLUTION) * VOLTAGE_VREF;
     
-    // 電流センスチャネルの変換
-    *p_current_V = ((float)raw_adc_current / (ADC_RESOLUTION)) * VOLTAGE_VREF;
+    // 電流センス電圧 (hadc2) の変換
+    *p_current_V = ((float)raw_adc_cs / ADC_RESOLUTION) * VOLTAGE_VREF;
 
     return HAL_OK;
 }
+
 /* USER CODE END 4 */
 
 /**
