@@ -145,7 +145,6 @@ int main(void)
   /* USER CODE BEGIN 2 */
   HAL_DAC_Start(&hdac1, DAC_CHANNEL_1); // Voltage 
   HAL_DAC_Start(&hdac1, DAC_CHANNEL_2); // Current
-
   uint16_t Vset_mV = 0;
   uint16_t Iset_mA = 0;
 
@@ -155,6 +154,12 @@ int main(void)
   int16_t last_count_i = __HAL_TIM_GET_COUNTER(&htim4);
   int32_t encoder_value_v = 0;
   int32_t encoder_value_i = 0;
+
+
+  HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED); 
+  HAL_ADCEx_Calibration_Start(&hadc2, ADC_SINGLE_ENDED); 
+  float output_voltage = 0.0f;
+  float load_current_A = 0.0f;
 
   LCD_init(&hi2c3, 0x27);
 
@@ -198,15 +203,18 @@ int main(void)
     if(Iset_mA < IMIN_mA) Iset_mA = IMIN_mA;
     if(Iset_mA > IMAX_mA) Iset_mA = IMAX_mA;
 
-    float output_voltage = feedback_voltage_V * VFB_DIV_RATIO;
-    float load_current_A = current_sense_voltage_V / (SHUNT_RESISTOR_mOhm * CURRENT_SENSE_AMP_GAIN);
-
     uint16_t dac_val_v = MapVoltageToDAC(Vset_mV);
     HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_1, DAC_ALIGN_12B_R, dac_val_v);
 
     uint16_t dac_val_i = MapCurrentToDAC(Iset_mA);
     HAL_DAC_SetValue(&hdac2, DAC_CHANNEL_1, DAC_ALIGN_12B_R, dac_val_i);
 
+
+    if (Read_Dual_ADC_Channels(&hadc1, &hadc2, &feedback_voltage_V, &current_sense_voltage_V) == HAL_OK)
+    {
+      output_voltage = feedback_voltage_V * VFB_DIV_RATIO;
+      load_current_A = current_sense_voltage_V / (SHUNT_RESISTOR_mOhm * CURRENT_SENSE_AMP_GAIN);
+    }
 
     char msg[128];
     char msg2[128];
